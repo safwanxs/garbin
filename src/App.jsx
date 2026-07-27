@@ -64,20 +64,33 @@ function App() {
   const handleGenerateRoute = async () => {
     try {
       const res = await fetch(`${API_BASE}/generate-route`, { method: 'POST' });
+      const contentType = res.headers.get('content-type');
+
+      if (!res.ok || !contentType || !contentType.includes('application/json')) {
+        setRoute(null);
+        setRouteError({
+          errorType: 'BACKEND_OFFLINE',
+          errorMessage: 'Backend Express server is offline or unreachable on port 8080. Please run "node backend/index.js" in your terminal.'
+        });
+        setActiveTab('route');
+        showToast("Backend Server Offline: Run 'node backend/index.js'");
+        return;
+      }
+
       const data = await res.json();
       if (data.success && data.route) {
         setRoute(data.route);
         setRouteError(null);
         setActiveTab('route');
-        showToast("Google Maps Directions API generated priority road route!");
+        showToast("OSRM Road Routing generated priority itinerary!");
       } else if (data.error || data.errorMessage) {
         setRoute(null);
         setRouteError({
-          errorType: data.errorType || 'DIRECTIONS_API_ERROR',
-          errorMessage: data.errorMessage || 'Failed to calculate route using Google Maps Directions API.'
+          errorType: data.errorType || 'ROUTING_ERROR',
+          errorMessage: data.errorMessage || 'Failed to calculate route using OSRM.'
         });
         setActiveTab('route');
-        showToast(`Route Error: ${data.errorType || 'Directions API Error'}`);
+        showToast(`Route Error: ${data.errorType || 'Routing Error'}`);
       } else {
         showToast("No bins currently require pickup!");
       }
@@ -86,7 +99,7 @@ function App() {
       setRoute(null);
       setRouteError({
         errorType: 'NETWORK_ERROR',
-        errorMessage: `Failed to connect to backend API server: ${err.message}`
+        errorMessage: `Failed to connect to backend server: ${err.message}`
       });
       setActiveTab('route');
     }
