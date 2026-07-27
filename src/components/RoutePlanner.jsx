@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Truck, MapPin, Sparkles, CheckCircle2, ShieldAlert, ArrowRight, Gauge, Leaf, Clock, Navigation } from 'lucide-react';
+import { Truck, MapPin, Sparkles, CheckCircle2, ShieldAlert, ArrowRight, Gauge, Leaf, Clock, Navigation, AlertTriangle, Key, ExternalLink } from 'lucide-react';
 import MapView from './MapView';
 
-export default function RoutePlanner({ bins = [], route = null, onGenerateRoute, onClearRoute }) {
+export default function RoutePlanner({ bins = [], route = null, routeError = null, onGenerateRoute, onClearRoute }) {
   const [loading, setLoading] = useState(false);
 
   const handleRunAgent = async () => {
@@ -15,30 +15,55 @@ export default function RoutePlanner({ bins = [], route = null, onGenerateRoute,
 
   return (
     <div className="route-planner-container">
+      {/* Header */}
       <div className="planner-header-card">
         <div className="header-left">
           <div className="adk-badge">
-            <Sparkles size={16} /> ADK Multi-Agent Orchestration
+            <Sparkles size={16} /> Priority Nearest-Neighbor + Google Maps Directions API
           </div>
           <h2>Sanitation Route Planner</h2>
-          <p className="text-muted">Takes today's resident reports &amp; predictive overflow alerts and generates an optimized truck itinerary.</p>
+          <p className="text-muted">Orders stops by priority tier (critical overflows first, then predictive risk) &amp; computes road routes via Google Maps API.</p>
         </div>
 
-        <button className="btn-primary btn-lg" onClick={handleRunAgent} disabled={loading}>
+        <button className="civic-btn-primary" onClick={handleRunAgent} disabled={loading}>
           <Truck size={20} />
-          {loading ? 'ADK Agent Optimizing Route...' : 'Generate Today\'s Optimized Route'}
+          {loading ? 'Directions API Optimizing Route...' : 'Generate Today\'s Road Route'}
         </button>
       </div>
 
-      {/* Impact Metrics Row */}
+      {/* Error State Banner if Directions API call fails */}
+      {routeError && (
+        <div className="api-error-banner">
+          <div className="error-banner-header">
+            <AlertTriangle size={24} className="icon-red" />
+            <div>
+              <h3>Google Maps Directions API Failure ({routeError.errorType})</h3>
+              <p className="error-msg-detail">{routeError.errorMessage}</p>
+            </div>
+          </div>
+
+          <div className="error-instructions">
+            <h4><Key size={14} className="inline-icon" /> Setup Instructions Required:</h4>
+            <ol>
+              <li>Add your API key to <code>backend/.env</code>: <code>GOOGLE_MAPS_API_KEY=YOUR_ACTUAL_KEY</code></li>
+              <li>Ensure <strong>Directions API</strong> is enabled in your Google Cloud Console.</li>
+              <li>Confirm billing is active on your Google Cloud Project.</li>
+            </ol>
+          </div>
+        </div>
+      )}
+
+      {/* Real Impact Metrics Row */}
       {route && (
         <div className="impact-metrics-row">
           <div className="metric-box">
             <div className="metric-icon blue"><Navigation size={22} /></div>
             <div>
-              <span className="metric-label">Optimized Distance</span>
+              <span className="metric-label">Real Road Distance</span>
               <h3 className="metric-val">{route.totalDistanceKm} km</h3>
-              <span className="metric-sub text-primary">-32% vs static routes</span>
+              <span className="metric-sub text-teal">
+                {route.distanceSavingsPct >= 0 ? `${route.distanceSavingsPct}%` : '0%'} vs naive ({route.naiveBaselineKm} km)
+              </span>
             </div>
           </div>
 
@@ -47,7 +72,9 @@ export default function RoutePlanner({ bins = [], route = null, onGenerateRoute,
             <div>
               <span className="metric-label">Est. Completion Time</span>
               <h3 className="metric-val">{route.estimatedDurationMins} mins</h3>
-              <span className="metric-sub text-muted">2 Trucks assigned</span>
+              <span className="metric-sub text-muted">
+                {route.trucksAssigned} Truck{route.trucksAssigned > 1 ? 's' : ''} assigned (Cap: 4/truck)
+              </span>
             </div>
           </div>
 
@@ -55,57 +82,58 @@ export default function RoutePlanner({ bins = [], route = null, onGenerateRoute,
             <div className="metric-icon green"><Leaf size={22} /></div>
             <div>
               <span className="metric-label">CO2 Emissions Saved</span>
-              <h3 className="metric-val text-primary">{route.co2SavedKg} kg</h3>
-              <span className="metric-sub text-primary">Eco-optimized routing</span>
+              <h3 className="metric-val text-teal">{route.co2SavedKg} kg</h3>
+              <span className="metric-sub text-teal">Priority routing</span>
             </div>
           </div>
 
           <div className="metric-box">
             <div className="metric-icon purple"><Gauge size={22} /></div>
             <div>
-              <span className="metric-label">Total Priority Stops</span>
-              <h3 className="metric-val">{route.stopSequence ? route.stopSequence.length : candidateBins.length} Bins</h3>
-              <span className="metric-sub text-warning">{candidateBins.filter(b => b.predictiveFlag && b.status !== 'overflowing').length} Predictive Stops</span>
+              <span className="metric-label">Priority Stops</span>
+              <h3 className="metric-val">{route.orderedBins ? route.orderedBins.length : candidateBins.length} Bins</h3>
+              <span className="metric-sub text-amber">
+                {route.orderedBins ? route.orderedBins.filter(b => b.status === 'overflowing').length : 0} Critical Overflows
+              </span>
             </div>
           </div>
         </div>
       )}
 
-      {/* Main Grid: Map & Itinerary List */}
+      {/* Main Grid: Priority Itinerary & Road Route Visualizer */}
       <div className="planner-main-grid">
         <div className="itinerary-panel">
           <div className="panel-title-bar">
-            <h3>Turn-by-Turn Pickup Itinerary</h3>
+            <h3>Priority Nearest-Neighbor Itinerary</h3>
             {route && <span className="route-id-tag">{route.routeId}</span>}
           </div>
 
           {!route ? (
             <div className="no-route-placeholder">
               <Truck size={48} className="text-muted" />
-              <h4>No Active Route Generated Yet</h4>
-              <p className="text-muted">Click <strong>"Generate Today's Optimized Route"</strong> to trigger the ADK routing agent.</p>
+              <h4>No Active Road Route Generated</h4>
+              <p className="text-muted">Click <strong>"Generate Today's Road Route"</strong> to trigger priority ordering and Google Maps Directions routing.</p>
               <button className="btn-secondary" onClick={handleRunAgent}>
                 Generate Route Now
               </button>
             </div>
           ) : (
             <div className="stops-timeline">
-              {route.stopSequence.map((stopId, idx) => {
-                const bin = bins.find(b => b.id === stopId) || { id: stopId, address: stopId, status: 'flagged' };
+              {(route.orderedBins || candidateBins).map((bin, idx) => {
                 const isOverflow = bin.status === 'overflowing';
 
                 return (
-                  <div key={stopId} className="timeline-stop-card">
+                  <div key={bin.id} className="timeline-stop-card">
                     <div className="stop-number">{idx + 1}</div>
                     <div className="stop-content">
                       <div className="stop-header">
                         <span className={`stop-pill ${isOverflow ? 'danger' : 'warning'}`}>
-                          {isOverflow ? 'URGENT OVERFLOW' : 'PREDICTIVE HIGH RISK'}
+                          {isOverflow ? 'CRITICAL OVERFLOW' : 'PREDICTIVE HIGH RISK'}
                         </span>
                         <span className="stop-bin-id">{bin.id}</span>
                       </div>
-                      <h4>{bin.address || `Municipal Bin Stop #${stopId}`}</h4>
-                      <p className="stop-reason">{bin.riskReason || 'Included in high-density route cluster'}</p>
+                      <h4>{bin.address}</h4>
+                      <p className="stop-reason">{bin.riskReason || 'High priority inspection stop'}</p>
                     </div>
                   </div>
                 );
@@ -113,7 +141,7 @@ export default function RoutePlanner({ bins = [], route = null, onGenerateRoute,
 
               <div className="itinerary-footer">
                 <button className="btn-success w-full" onClick={onClearRoute}>
-                  <CheckCircle2 size={18} /> Mark All Stops Picked Up &amp; Complete Route
+                  <CheckCircle2 size={18} /> Mark All Route Stops Picked Up &amp; Clear
                 </button>
               </div>
             </div>
@@ -122,8 +150,8 @@ export default function RoutePlanner({ bins = [], route = null, onGenerateRoute,
 
         <div className="map-panel">
           <div className="panel-title-bar">
-            <h3>Route Visualizer</h3>
-            <span className="text-muted">Blue line indicates optimized driver transit path</span>
+            <h3>Google Maps Road Route Visualizer</h3>
+            <span className="text-muted">Blue line indicates Google Directions polyline</span>
           </div>
           <MapView bins={bins} route={route} />
         </div>

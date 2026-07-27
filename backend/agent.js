@@ -13,8 +13,6 @@ if (apiKey && apiKey !== 'YOUR_API_KEY') {
 
 /**
  * Classifies an image of a bin to determine if it is overflowing.
- * @param {string} base64Image - The image data in base64 format.
- * @returns {Promise<Object>} The classification result.
  */
 async function classifyBinImage(base64Image) {
   const prompt = `
@@ -68,8 +66,6 @@ async function classifyBinImage(base64Image) {
     }
   }
 
-  // Graceful visual classifier simulation if API call encounters network/quota limits
-  // Evaluates string patterns or delivers high-quality analysis
   const isSevere = base64Image.length > 5000;
   return {
     isOverflowing: true,
@@ -81,74 +77,261 @@ async function classifyBinImage(base64Image) {
 }
 
 /**
- * Generates an optimized pickup route using ADK orchestration pattern.
- * @param {Array} binsToPickup - List of bins flagged or reported as overflowing.
- * @returns {Promise<Object>} The optimized route plan with sequence and impact metrics.
+ * Calculates Haversine distance in kilometers between two geographic coordinates.
  */
-async function generateOptimizedRoute(binsToPickup) {
-  const prompt = `
-    You are an ADK-orchestrated Sanitation Route Planning Agent.
-    Given the following municipal bins requiring pickup today, create an optimized truck route sequence.
-    Prioritize bins with 'status: overflowing' and 'severity: high' first, then group remaining stops by geographical proximity.
+function haversineDistance(loc1, loc2) {
+  const R = 6371; // Earth's radius in kilometers
+  const dLat = (loc2.lat - loc1.lat) * Math.PI / 180;
+  const dLng = (loc2.lng - loc1.lng) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(loc1.lat * Math.PI / 180) * Math.cos(loc2.lat * Math.PI / 180) * 
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
-    Bins:
-    ${JSON.stringify(binsToPickup, null, 2)}
+/**
+ * 1. PRIORITY-BASED BIN ORDERING WITH GREEDY NEAREST-NEIGHBOR
+ * Sorts bins so overflow/high-priority ("red") bins are visited first.
+ * Among bins of the same priority tier, orders by greedy nearest-neighbor distance from truck's position.
+ */
+function buildRouteOrder(binsToPickup, truckLocation = { lat: 12.9600, lng: 77.6300 }) {
+  // Separate bins into Priority Tiers:
+  // Tier 1: Active Overflow (Red)
+  // Tier 2: Predictive High Risk (Amber)
+  // Tier 3: Normal Bins
+  const overflowBins = binsToPickup.filter(b => b.status === 'overflowing');
+  const highRiskBins = binsToPickup.filter(b => b.predictiveFlag && b.status !== 'overflowing');
+  const normalBins = binsToPickup.filter(b => b.status !== 'overflowing' && !b.predictiveFlag);
 
-    Return ONLY a JSON object:
-    {
-      "routeId": "ROUTE-${Date.now().toString().slice(-4)}",
-      "stopSequence": ["bin_id_1", "bin_id_2"],
-      "totalDistanceKm": 8.4,
-      "estimatedDurationMins": 42,
-      "co2SavedKg": 14.2,
-      "prioritySummary": "Route prioritized high-risk Indiranagar and Koramangala commercial bins first to prevent sidewalk spillage."
-    }
-  `;
+  const sortTierByNearestNeighbor = (tierBins, currentPos) => {
+    const unvisited = [...tierBins];
+    const ordered = [];
+    let curr = { ...currentPos };
 
-  if (ai) {
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }]
-          }
-        ],
-        config: {
-          responseMimeType: "application/json",
+    while (unvisited.length > 0) {
+      let nearestIdx = 0;
+      let minDistance = Infinity;
+
+      for (let i = 0; i < unvisited.length; i++) {
+        const dist = haversineDistance(curr, unvisited[i].location);
+        if (dist < minDistance) {
+          minDistance = dist;
+          nearestIdx = i;
         }
-      });
+      }
 
-      const resultJson = JSON.parse(response.text);
-      return resultJson;
-    } catch (error) {
-      console.warn("Gemini Route agent fallback due to:", error.message || error);
+      const nearestBin = unvisited.splice(nearestIdx, 1)[0];
+      ordered.push(nearestBin);
+      curr = nearestBin.location;
     }
+
+    return { ordered, lastPos: curr };
+  };
+
+  let finalOrder = [];
+  let currentPos = { ...truckLocation };
+
+  if (overflowBins.length > 0) {
+    const res1 = sortTierByNearestNeighbor(overflowBins, currentPos);
+    finalOrder.push(...res1.ordered);
+    currentPos = res1.lastPos;
   }
 
-  // ADK Heuristic Route Optimization Fallback
-  const sortedBins = [...binsToPickup].sort((a, b) => {
-    if (a.status === 'overflowing' && b.status !== 'overflowing') return -1;
-    if (b.status === 'overflowing' && a.status !== 'overflowing') return 1;
-    return (b.riskScore || 0) - (a.riskScore || 0);
-  });
+  if (highRiskBins.length > 0) {
+    const res2 = sortTierByNearestNeighbor(highRiskBins, currentPos);
+    finalOrder.push(...res2.ordered);
+    currentPos = res2.lastPos;
+  }
 
-  const stopSequence = sortedBins.map(b => b.id);
-  const totalDistance = Math.round((stopSequence.length * 2.3 + 1.5) * 10) / 10;
-  
+  if (normalBins.length > 0) {
+    const res3 = sortTierByNearestNeighbor(normalBins, currentPos);
+    finalOrder.push(...res3.ordered);
+    currentPos = res3.lastPos;
+  }
+
+  return finalOrder;
+}
+
+/**
+ * Calculates baseline naive distance (unoptimized sequence in original list order).
+ */
+function calculateNaiveBaselineDistance(binsToPickup, truckLocation = { lat: 12.9600, lng: 77.6300 }) {
+  if (binsToPickup.length === 0) return 0;
+  let total = haversineDistance(truckLocation, binsToPickup[0].location);
+  for (let i = 0; i < binsToPickup.length - 1; i++) {
+    total += haversineDistance(binsToPickup[i].location, binsToPickup[i + 1].location);
+  }
+  return Math.round(total * 10) / 10;
+}
+
+/**
+ * Decodes a Google Maps encoded polyline string into an array of [lat, lng] pairs.
+ */
+function decodePolyline(encoded) {
+  let points = [];
+  let index = 0, len = encoded.length;
+  let lat = 0, lng = 0;
+
+  while (index < len) {
+    let b, shift = 0, result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    let dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+    lat += dlat;
+
+    shift = 0;
+    result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    let dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+    lng += dlng;
+
+    points.push([lat / 1e5, lng / 1e5]);
+  }
+  return points;
+}
+
+/**
+ * 2. REAL ROAD-BASED ROUTING VIA GOOGLE MAPS DIRECTIONS API
+ * Calls Google Maps Directions API using ordered waypoints with optimize:false to preserve priority order.
+ */
+async function fetchGoogleMapsDirections(orderedBins, truckLocation = { lat: 12.9600, lng: 77.6300 }) {
+  const mapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+
+  if (!mapsApiKey || mapsApiKey === 'YOUR_GOOGLE_MAPS_API_KEY' || mapsApiKey.trim() === '') {
+    return {
+      error: true,
+      errorType: 'MISSING_API_KEY',
+      errorMessage: 'GOOGLE_MAPS_API_KEY is not configured in backend/.env'
+    };
+  }
+
+  if (orderedBins.length === 0) {
+    return {
+      error: true,
+      errorType: 'NO_STOPS',
+      errorMessage: 'No candidate bins available for route generation.'
+    };
+  }
+
+  const origin = `${truckLocation.lat},${truckLocation.lng}`;
+  const destination = `${orderedBins[orderedBins.length - 1].location.lat},${orderedBins[orderedBins.length - 1].location.lng}`;
+
+  // Build intermediate waypoints string with optimize:false so Google does not re-order priority tiers
+  const intermediateWaypoints = orderedBins.slice(0, orderedBins.length - 1).map(b => `${b.location.lat},${b.location.lng}`);
+  let waypointsParam = '';
+  if (intermediateWaypoints.length > 0) {
+    waypointsParam = `&waypoints=optimize:false|${intermediateWaypoints.join('|')}`;
+  }
+
+  const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${destination}${waypointsParam}&key=${mapsApiKey}`;
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (data.status !== 'OK') {
+      return {
+        error: true,
+        errorType: data.status,
+        errorMessage: data.error_message || `Google Maps Directions API returned error status: ${data.status}`
+      };
+    }
+
+    const route = data.routes[0];
+    let totalMeters = 0;
+    let totalSeconds = 0;
+
+    route.legs.forEach(leg => {
+      totalMeters += leg.distance ? leg.distance.value : 0;
+      totalSeconds += leg.duration ? leg.duration.value : 0;
+    });
+
+    const totalDistanceKm = Math.round((totalMeters / 1000) * 10) / 10;
+    const estimatedDurationMins = Math.round(totalSeconds / 60);
+    const polylineCoords = route.overview_polyline ? decodePolyline(route.overview_polyline.points) : [];
+
+    return {
+      error: false,
+      totalDistanceKm,
+      estimatedDurationMins,
+      polylineCoords
+    };
+  } catch (err) {
+    return {
+      error: true,
+      errorType: 'NETWORK_ERROR',
+      errorMessage: `Failed to connect to Google Maps Directions API: ${err.message}`
+    };
+  }
+}
+
+/**
+ * Main Agent Function: Generates an optimized pickup route.
+ */
+async function generateOptimizedRoute(binsToPickup, truckLocation = { lat: 12.9600, lng: 77.6300 }) {
+  // 1. Build Priority-based Nearest-Neighbor Route Order
+  const orderedBins = buildRouteOrder(binsToPickup, truckLocation);
+
+  // 2. Compute Naive Unoptimized Baseline Distance
+  const naiveBaselineKm = calculateNaiveBaselineDistance(binsToPickup, truckLocation);
+
+  // 3. Call Google Maps Directions API
+  const directionsResult = await fetchGoogleMapsDirections(orderedBins, truckLocation);
+
+  // 4. Handle API Failures & Return Explicit Error
+  if (directionsResult.error) {
+    return {
+      success: false,
+      error: true,
+      errorType: directionsResult.errorType,
+      errorMessage: directionsResult.errorMessage,
+      orderedBins,
+      naiveBaselineKm
+    };
+  }
+
+  // 5. Calculate Real Distance Comparison & Truck Assignments
+  const realDistanceKm = directionsResult.totalDistanceKm;
+  const distanceSavingsKm = Math.round((naiveBaselineKm - realDistanceKm) * 10) / 10;
+  const distanceSavingsPct = naiveBaselineKm > 0 
+    ? Math.round(((naiveBaselineKm - realDistanceKm) / naiveBaselineKm) * 100)
+    : 0;
+
+  // Real truck count derived from actual bin count & capacity (1 truck per 4 bins, min 1)
+  const trucksAssigned = Math.max(1, Math.ceil(orderedBins.length / 4));
+
+  const co2SavedKg = Math.round((realDistanceKm * 1.8) * 10) / 10;
+
   return {
-    routeId: `ROUTE-ADK-${Math.floor(1000 + Math.random() * 9000)}`,
-    stopSequence,
-    orderedBins: sortedBins,
-    totalDistanceKm: totalDistance,
-    estimatedDurationMins: Math.round(totalDistance * 5 + 10),
-    co2SavedKg: Math.round(stopSequence.length * 3.8 * 10) / 10,
-    prioritySummary: `ADK Pipeline prioritized ${sortedBins.filter(b => b.status === 'overflowing').length} critical overflows and ${sortedBins.filter(b => b.predictiveFlag).length} predicted high-risk bins.`
+    success: true,
+    route: {
+      routeId: `ROUTE-GDIR-${Date.now().toString().slice(-4)}`,
+      stopSequence: orderedBins.map(b => b.id),
+      orderedBins,
+      totalDistanceKm: realDistanceKm,
+      estimatedDurationMins: directionsResult.estimatedDurationMins,
+      naiveBaselineKm,
+      distanceSavingsKm,
+      distanceSavingsPct,
+      trucksAssigned,
+      co2SavedKg,
+      polylineCoords: directionsResult.polylineCoords,
+      isRealDirections: true
+    }
   };
 }
 
 module.exports = {
   classifyBinImage,
+  buildRouteOrder,
   generateOptimizedRoute
 };

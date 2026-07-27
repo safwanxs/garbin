@@ -59,29 +59,36 @@ function App() {
     setTimeout(() => setNotification(null), 4000);
   };
 
+  const [routeError, setRouteError] = useState(null);
+
   const handleGenerateRoute = async () => {
     try {
       const res = await fetch(`${API_BASE}/generate-route`, { method: 'POST' });
       const data = await res.json();
       if (data.success && data.route) {
         setRoute(data.route);
+        setRouteError(null);
         setActiveTab('route');
-        showToast("ADK-pattern Routing Agent generated optimized pickup itinerary!");
+        showToast("Google Maps Directions API generated priority road route!");
+      } else if (data.error || data.errorMessage) {
+        setRoute(null);
+        setRouteError({
+          errorType: data.errorType || 'DIRECTIONS_API_ERROR',
+          errorMessage: data.errorMessage || 'Failed to calculate route using Google Maps Directions API.'
+        });
+        setActiveTab('route');
+        showToast(`Route Error: ${data.errorType || 'Directions API Error'}`);
       } else {
         showToast("No bins currently require pickup!");
       }
     } catch (err) {
       console.error(err);
-      const flagged = bins.filter(b => b.status === 'overflowing' || b.predictiveFlag);
-      setRoute({
-        routeId: 'ROUTE-ADK-8842',
-        stopSequence: flagged.map(b => b.id),
-        totalDistanceKm: 8.4,
-        estimatedDurationMins: 42,
-        co2SavedKg: 14.2
+      setRoute(null);
+      setRouteError({
+        errorType: 'NETWORK_ERROR',
+        errorMessage: `Failed to connect to backend API server: ${err.message}`
       });
       setActiveTab('route');
-      showToast("ADK-pattern Routing Agent generated route!");
     }
   };
 
@@ -241,6 +248,7 @@ function App() {
             <RoutePlanner 
               bins={bins} 
               route={route} 
+              routeError={routeError}
               onGenerateRoute={handleGenerateRoute}
               onClearRoute={handleClearRoute}
             />

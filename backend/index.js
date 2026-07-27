@@ -238,7 +238,7 @@ app.post('/api/bins/pickup', (req, res) => {
 
 /**
  * POST /api/generate-route
- * ADK-pattern agent creates optimized pickup route for today's flagged & reported bins.
+ * Priority nearest-neighbor ordering + Google Maps Directions API routing.
  */
 app.post('/api/generate-route', async (req, res) => {
   try {
@@ -253,13 +253,23 @@ app.post('/api/generate-route', async (req, res) => {
       });
     }
 
-    const routePlan = await generateOptimizedRoute(binsToPickup);
-    
+    // BBMP Depot Start Location in Central Bengaluru
+    const truckLocation = { lat: 12.9600, lng: 77.6300 };
+    const routePlan = await generateOptimizedRoute(binsToPickup, truckLocation);
+
+    if (!routePlan.success) {
+      return res.status(400).json({
+        success: false,
+        error: true,
+        errorType: routePlan.errorType,
+        errorMessage: routePlan.errorMessage
+      });
+    }
+
     const newRoute = {
-      ...routePlan,
+      ...routePlan.route,
       createdAt: new Date().toISOString(),
-      status: 'assigned',
-      assignedTruck: 'Truck #KA-03-SAN-402'
+      status: 'assigned'
     };
 
     routesStore.unshift(newRoute);
@@ -270,7 +280,7 @@ app.post('/api/generate-route', async (req, res) => {
     });
   } catch (error) {
     console.error("Route Generation Error:", error);
-    res.status(500).json({ error: 'Failed to generate sanitation route' });
+    res.status(500).json({ success: false, error: true, errorType: 'SERVER_ERROR', errorMessage: error.message });
   }
 });
 

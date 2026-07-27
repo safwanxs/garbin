@@ -106,21 +106,25 @@ export default function MapView({ bins = [], route = null, onSelectBin, onPickup
     });
 
     // Draw route polyline if an active route exists
-    if (route && route.stopSequence && route.stopSequence.length > 1) {
-      const routeCoords = [];
-      route.stopSequence.forEach(stopId => {
-        const foundBin = bins.find(b => b.id === stopId);
-        if (foundBin && foundBin.location) {
-          routeCoords.push([foundBin.location.lat, foundBin.location.lng]);
-        }
-      });
+    if (route) {
+      let routeCoords = [];
+
+      if (route.polylineCoords && route.polylineCoords.length > 0) {
+        routeCoords = route.polylineCoords;
+      } else if (route.stopSequence && route.stopSequence.length > 1) {
+        route.stopSequence.forEach(stopId => {
+          const foundBin = bins.find(b => b.id === stopId);
+          if (foundBin && foundBin.location) {
+            routeCoords.push([foundBin.location.lat, foundBin.location.lng]);
+          }
+        });
+      }
 
       if (routeCoords.length > 1) {
         routePolylineRef.current = window.L.polyline(routeCoords, {
-          color: '#3b82f6',
-          weight: 4,
-          opacity: 0.85,
-          dashArray: '8, 8',
+          color: '#0284c7',
+          weight: 5,
+          opacity: 0.9,
           lineCap: 'round'
         }).addTo(leafletMapRef.current);
 
