@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { classifyBinImage, generateOptimizedRoute } = require('./agent');
 const { processPredictiveLayer, calculateBinRisk } = require('./predictiveEngine');
 const { mcpToolsRegistry, handleMcpToolCall } = require('./mcpServer');
@@ -8,6 +9,10 @@ const { mcpToolsRegistry, handleMcpToolCall } = require('./mcpServer');
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '15mb' }));
+
+// Serve static assets from built Vite dist folder in production
+const distPath = path.join(__dirname, '..', 'dist');
+app.use(express.static(distPath));
 
 // Initial Mock In-Memory Database (mimics Firestore Realtime collections)
 let binsStore = [
@@ -233,7 +238,7 @@ app.post('/api/bins/pickup', (req, res) => {
 
 /**
  * POST /api/generate-route
- * ADK-orchestrated agent creates optimized pickup route for today's flagged & reported bins.
+ * ADK-pattern agent creates optimized pickup route for today's flagged & reported bins.
  */
 app.post('/api/generate-route', async (req, res) => {
   try {
@@ -322,6 +327,12 @@ app.get('/api/analytics', (req, res) => {
       slaComplianceRate: '96.2%'
     }
   });
+});
+
+// Single Cloud Run service fallback: Serve built index.html for all client-side SPA routes
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api')) return next();
+  res.sendFile(path.join(distPath, 'index.html'));
 });
 
 const PORT = process.env.PORT || 8080;

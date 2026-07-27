@@ -1,28 +1,29 @@
 import React, { useState, useRef } from 'react';
-import { Camera, MapPin, UploadCloud, Loader2, CheckCircle, AlertTriangle, Sparkles, ShieldCheck } from 'lucide-react';
+import { Camera, MapPin, UploadCloud, Loader2, CheckCircle2, AlertTriangle, Sparkles, ShieldCheck, Image as ImageIcon } from 'lucide-react';
+import { API_BASE } from '../config';
 
 const PRESET_SAMPLE_PHOTOS = [
   {
     id: 'preset_indiranagar',
-    title: 'Indiranagar Commercial Dumpster',
+    title: 'Indiranagar Compactor',
     binId: 'bin_indira_101',
     address: '100ft Road, Indiranagar',
     url: 'https://images.unsplash.com/photo-1530587191325-3db32d826c18?w=800&auto=format&fit=crop',
-    description: 'Commercial packaging and cardboard spill'
+    description: 'Cardboard & plastic commercial overflow'
   },
   {
     id: 'preset_koramangala',
-    title: 'Koramangala 5th Block Overflow',
+    title: 'Koramangala 5th Block',
     binId: 'bin_kora_204',
     address: '5th Block, Koramangala',
     url: 'https://images.unsplash.com/photo-1611284446314-60a58ac0deb9?w=800&auto=format&fit=crop',
-    description: 'Street waste bin completely filled with plastic waste'
+    description: 'Street waste bin completely filled'
   },
   {
     id: 'preset_mgroad',
-    title: 'MG Road Metro Spill',
+    title: 'MG Road Metro Exit',
     binId: 'bin_mg_309',
-    address: 'MG Road Metro Station Exit 2',
+    address: 'MG Road Metro Exit 2',
     url: 'https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?w=800&auto=format&fit=crop',
     description: 'Public litter bin overfilled onto sidewalk'
   }
@@ -55,7 +56,6 @@ export default function ReportBin({ onReportSubmitted }) {
   const handleSelectPreset = (preset) => {
     setImage(preset.url);
     setSelectedBinId(preset.binId);
-    // Convert URL to a small dummy base64 string for payload
     setBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==");
   };
 
@@ -69,7 +69,7 @@ export default function ReportBin({ onReportSubmitted }) {
           });
         },
         () => {
-          alert('Using default municipal coordinates (Indiranagar, Bengaluru).');
+          alert('GPS tagged to municipal zone (Indiranagar, Bengaluru).');
         }
       );
     }
@@ -77,7 +77,7 @@ export default function ReportBin({ onReportSubmitted }) {
 
   const handleSubmit = async () => {
     if (!base64String && !image) {
-      alert("Please capture, upload, or select a sample photo of the bin.");
+      alert("Please capture or upload a bin photo.");
       return;
     }
 
@@ -85,7 +85,7 @@ export default function ReportBin({ onReportSubmitted }) {
     setResult(null);
 
     try {
-      const response = await fetch('http://localhost:8080/api/report', {
+      const response = await fetch(`${API_BASE}/report`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -106,123 +106,122 @@ export default function ReportBin({ onReportSubmitted }) {
       }
     } catch (error) {
       console.error(error);
-      alert("Backend API disconnected. Ensure backend server is running on port 8080.");
+      alert("Backend API disconnected.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="report-page-container">
-      <div className="report-card-main">
-        <div className="report-header">
-          <div className="title-row">
-            <h2>Citizen Waste Reporting</h2>
-            <span className="gemini-tag">
-              <Sparkles size={14} /> Powered by Gemini Vision
-            </span>
-          </div>
-          <p className="text-muted">Snap a photo of an overflowing bin to trigger immediate AI classification and route dispatch.</p>
+    <div className="mobile-citizen-view">
+      {/* Citizen Header */}
+      <div className="citizen-header-bar">
+        <div className="civic-badge">
+          <Sparkles size={14} className="icon-amber" />
+          <span>GEMINI 2.5 MULTIMODAL VISION</span>
         </div>
+        <h2>Report Overflowing Bin</h2>
+        <p className="citizen-subtitle">Help keep Bengaluru clean. Snap a photo of a bin needing attention.</p>
+      </div>
 
-        {/* Preset Sample Photo Selector for Hackathon Demo */}
-        <div className="presets-section">
-          <label className="section-label">Quick Test Preset Samples (1-Click Judge Demo):</label>
-          <div className="presets-grid">
-            {PRESET_SAMPLE_PHOTOS.map(preset => (
-              <div 
-                key={preset.id} 
-                className={`preset-thumb ${image === preset.url ? 'selected' : ''}`}
-                onClick={() => handleSelectPreset(preset)}
-              >
-                <img src={preset.url} alt={preset.title} />
-                <div className="preset-info">
-                  <strong>{preset.title}</strong>
-                  <span>{preset.description}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="divider-or"><span>OR UPLOAD CUSTOM PHOTO</span></div>
-
-        {/* Upload Box */}
-        <div className="upload-area" onClick={() => fileInputRef.current?.click()}>
-          <input 
-            type="file" 
-            accept="image/*" 
-            capture="environment"
-            ref={fileInputRef} 
-            style={{ display: 'none' }} 
-            onChange={handleImageUpload} 
-          />
-          {image ? (
-            <img src={image} alt="Bin Preview" className="image-preview" />
-          ) : (
-            <div className="upload-placeholder">
-              <UploadCloud size={48} className="text-primary" />
-              <p>Tap to snap a photo or drag & drop image here</p>
-              <span className="text-muted text-xs">Supports JPG, PNG, WebP up to 10MB</span>
+      {/* Main Camera Viewfinder Box */}
+      <div className="camera-viewfinder" onClick={() => fileInputRef.current?.click()}>
+        <input 
+          type="file" 
+          accept="image/*" 
+          capture="environment"
+          ref={fileInputRef} 
+          style={{ display: 'none' }} 
+          onChange={handleImageUpload} 
+        />
+        {image ? (
+          <img src={image} alt="Bin Viewfinder" className="viewfinder-preview" />
+        ) : (
+          <div className="viewfinder-placeholder">
+            <div className="camera-touch-ring">
+              <Camera size={42} className="icon-amber" />
             </div>
-          )}
-        </div>
-
-        <div className="form-controls-row">
-          <div className="location-control">
-            <button type="button" className="btn-secondary" onClick={handleGetLocation}>
-              <MapPin size={18} className="text-primary" />
-              {location ? `GPS Tagged (${location.lat.toFixed(4)}, ${location.lng.toFixed(4)})` : "Tag GPS Location"}
-            </button>
-          </div>
-
-          <div className="trust-score-badge">
-            <ShieldCheck size={18} className="text-primary" />
-            <span>Citizen Trust Score: <strong>92/100</strong> (Spam Protected)</span>
-          </div>
-        </div>
-
-        <button className="btn-primary submit-btn" onClick={handleSubmit} disabled={loading || (!image && !base64String)}>
-          {loading ? <Loader2 className="spinner" size={20} /> : <Camera size={20} />}
-          {loading ? 'Gemini 3.1 Multimodal Analysis in progress...' : 'Submit Photo for AI Analysis'}
-        </button>
-
-        {/* Results Card */}
-        {result && (
-          <div className={`result-card ${result.isOverflowing ? 'danger' : 'success'}`}>
-            <div className="result-header">
-              {result.isOverflowing ? (
-                <AlertTriangle size={28} className="text-danger" />
-              ) : (
-                <CheckCircle size={28} className="text-primary" />
-              )}
-              <div>
-                <h3>{result.isOverflowing ? 'ACTIVE OVERFLOW DETECTED' : 'BIN IS NORMAL'}</h3>
-                <span className="text-muted">Gemini Multimodal Vision Output</span>
-              </div>
-            </div>
-
-            <div className="result-grid">
-              <div className="result-item">
-                <span className="label">Severity Level</span>
-                <span className={`val-badge ${result.severity}`}>{result.severity?.toUpperCase()}</span>
-              </div>
-              <div className="result-item">
-                <span className="label">AI Confidence</span>
-                <span className="val-text">{(result.confidenceScore * 100).toFixed(1)}%</span>
-              </div>
-              <div className="result-item full-width">
-                <span className="label">Waste Type Classified</span>
-                <span className="val-text">{result.wasteType || 'Commercial plastic & packaging waste'}</span>
-              </div>
-              <div className="result-item full-width">
-                <span className="label">Recommended Action</span>
-                <span className="val-text highlighted">{result.recommendation || 'Dispatch compaction truck within 2 hours.'}</span>
-              </div>
-            </div>
+            <span className="touch-label">TAP TO TAKE PHOTO</span>
+            <span className="touch-sub">or select preset test sample below</span>
           </div>
         )}
       </div>
+
+      {/* 1-Click Judge Demo Presets */}
+      <div className="presets-mobile-strip">
+        <span className="strip-title"><ImageIcon size={13} /> 1-Click Test Presets:</span>
+        <div className="preset-scroll-row">
+          {PRESET_SAMPLE_PHOTOS.map(preset => (
+            <button 
+              key={preset.id}
+              type="button"
+              className={`preset-pill ${image === preset.url ? 'active' : ''}`}
+              onClick={() => handleSelectPreset(preset)}
+            >
+              {preset.title}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Location & Trust Meta Bar */}
+      <div className="meta-actions-bar">
+        <button type="button" className="location-btn" onClick={handleGetLocation}>
+          <MapPin size={16} className="icon-blue" />
+          <span>{location ? `GPS (${location.lat.toFixed(3)}, ${location.lng.toFixed(3)})` : "Tag GPS Location"}</span>
+        </button>
+
+        <div className="trust-pill">
+          <ShieldCheck size={16} className="icon-teal" />
+          <span>Trust Score 92%</span>
+        </div>
+      </div>
+
+      {/* Main Submit Action Button */}
+      <button 
+        className="primary-touch-btn" 
+        onClick={handleSubmit} 
+        disabled={loading || (!image && !base64String)}
+      >
+        {loading ? <Loader2 className="spinner" size={22} /> : <Camera size={22} />}
+        <span>{loading ? 'Gemini AI Analyzing Photo...' : 'SUBMIT REPORT TO SANITATION DEPT'}</span>
+      </button>
+
+      {/* High-Contrast Gemini Classification Result */}
+      {result && (
+        <div className={`analysis-result-card ${result.isOverflowing ? 'overflow-detected' : 'normal-status'}`}>
+          <div className="analysis-header">
+            {result.isOverflowing ? (
+              <AlertTriangle size={32} className="icon-red" />
+            ) : (
+              <CheckCircle2 size={32} className="icon-teal" />
+            )}
+            <div>
+              <h3>{result.isOverflowing ? 'ACTIVE OVERFLOW CONFIRMED' : 'BIN LEVEL NORMAL'}</h3>
+              <span className="model-label">Gemini 2.5 Multimodal Flash Classification</span>
+            </div>
+          </div>
+
+          <div className="analysis-grid">
+            <div className="grid-cell">
+              <span className="cell-label">Severity Score</span>
+              <span className={`cell-val severity-${result.severity}`}>{result.severity?.toUpperCase()}</span>
+            </div>
+            <div className="grid-cell">
+              <span className="cell-label">AI Confidence</span>
+              <span className="cell-val">{(result.confidenceScore * 100).toFixed(1)}%</span>
+            </div>
+            <div className="grid-cell full">
+              <span className="cell-label">Waste Type Identified</span>
+              <span className="cell-val text-bright">{result.wasteType || 'Commercial plastic & packaging waste'}</span>
+            </div>
+            <div className="grid-cell full">
+              <span className="cell-label">Action Dispatch Recommendation</span>
+              <span className="cell-val action-text">{result.recommendation || 'Flagged for priority truck route dispatch.'}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

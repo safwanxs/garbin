@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Terminal, Play, Code2, Cpu, CheckCircle, RefreshCw } from 'lucide-react';
+import { Terminal, Play, Code2, Cpu, CheckCircle2, RefreshCw } from 'lucide-react';
+import { API_BASE } from '../config';
 
 const SAMPLE_MCP_TOOLS = [
   {
@@ -50,7 +51,7 @@ export default function McpInspector() {
         return;
       }
 
-      const response = await fetch('http://localhost:8080/api/mcp/call', {
+      const response = await fetch(`${API_BASE}/mcp/call`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -73,10 +74,10 @@ export default function McpInspector() {
     <div className="mcp-inspector-container">
       <div className="mcp-header">
         <div className="mcp-title">
-          <Cpu className="text-primary" size={24} />
-          <h2>Model Context Protocol (MCP) Live Inspector</h2>
+          <Cpu className="icon-amber" size={24} />
+          <h2>MCP-Schema Compatible Tool Interface</h2>
         </div>
-        <p className="text-muted">Garbin exposes standard MCP tool interfaces so external AI agents, municipal assistants, or supervisors can interact seamlessly with city waste infrastructure.</p>
+        <p className="text-muted">Garbin exposes standard MCP tool schemas so external AI agents, municipal assistants, or supervisors can interact seamlessly with city waste infrastructure.</p>
       </div>
 
       <div className="mcp-grid">
@@ -91,7 +92,7 @@ export default function McpInspector() {
                 onClick={() => handleSelectTool(t)}
               >
                 <div className="tool-item-header">
-                  <Terminal size={16} className="text-primary" />
+                  <Terminal size={16} className="icon-amber" />
                   <strong>{t.name}</strong>
                 </div>
                 <p className="tool-desc">{t.description}</p>
@@ -107,7 +108,7 @@ export default function McpInspector() {
               <h3>Tool: <code>{selectedTool.name}</code></h3>
               <p className="text-muted text-xs">JSON-RPC / MCP Execution Console</p>
             </div>
-            <button className="btn-primary" onClick={handleExecuteTool} disabled={loading}>
+            <button className="civic-btn-primary" onClick={handleExecuteTool} disabled={loading}>
               {loading ? <RefreshCw className="spinner" size={16} /> : <Play size={16} />}
               {loading ? 'Executing...' : 'Run MCP Tool'}
             </button>
@@ -126,7 +127,7 @@ export default function McpInspector() {
           <div className="console-output-block">
             <div className="console-bar">
               <span>MCP Protocol Response Output</span>
-              {mcpResponse && <span className="status-ok"><CheckCircle size={12} /> 200 OK</span>}
+              {mcpResponse && <span className="status-ok"><CheckCircle2 size={12} /> 200 OK</span>}
             </div>
             <pre className="json-output">
               {mcpResponse 

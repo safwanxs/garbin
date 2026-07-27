@@ -2,12 +2,12 @@ import React from 'react';
 import { BarChart3, TrendingUp, ShieldCheck, Leaf, Award, CheckCircle2, Cpu } from 'lucide-react';
 
 const GOOGLE_TECH_STACK = [
-  { name: 'Gemini Models', layer: 'Citizen Reporting', detail: 'Multimodal vision model classifying overflow photos & severity in real time.' },
-  { name: 'Vertex AI', layer: 'Fill Prediction', detail: 'Predictive algorithm evaluating report velocity and fill rates to flag pre-overflow risk.' },
-  { name: 'Agent Development Kit (ADK)', layer: 'Orchestration', detail: 'Coordinates reporting agent, predictive agent, and route-planning agent as one multi-agent pipeline.' },
-  { name: 'Firebase (Firestore + Auth)', layer: 'Data & Backend', detail: 'Real-time database storing bin locations, report logs, truck status, and user trust scores.' },
-  { name: 'MCP (Model Context Protocol)', layer: 'External Integration', detail: 'Standardized tool interface connecting Garbin logic with municipal GIS map services.' },
-  { name: 'Cloud Run', layer: 'Hosting', detail: 'Production container hosting for frontend & Node.js backend services.' }
+  { name: 'Gemini Models', layer: 'Citizen Reporting', detail: 'Gemini 2.5 Multimodal Flash Vision classifying overflow photos & severity in real time.' },
+  { name: 'Vertex AI Heuristics', layer: 'Fill Prediction', detail: 'Predictive risk algorithm evaluating report velocity and pickup gaps to flag pre-overflow risk.' },
+  { name: 'ADK-Pattern Pipeline', layer: 'Orchestration', detail: 'Multi-agent pipeline coordinating Reporting Agent -> Predictive Agent -> Route Planning Agent.' },
+  { name: 'Firebase Schema & Store', layer: 'Data & Backend', detail: 'Real-time database storing bin locations, report logs, truck status, and citizen trust scores.' },
+  { name: 'MCP Tool Interface', layer: 'External Integration', detail: 'Standardized MCP-compatible tool interface connecting Garbin logic with municipal GIS map tools.' },
+  { name: 'Cloud Run', layer: 'Hosting', detail: 'Production container hosting serving Express backend & Vite React frontend on a single service.' }
 ];
 
 export default function Analytics() {
@@ -23,16 +23,16 @@ export default function Analytics() {
         <div className="analytics-card">
           <div className="card-top">
             <span className="card-title">SLA Compliance Rate</span>
-            <TrendingUp size={20} className="text-primary" />
+            <TrendingUp size={20} className="icon-amber" />
           </div>
-          <p className="card-val text-primary">96.2%</p>
+          <p className="card-val text-amber">96.2%</p>
           <span className="card-sub">+18% improvement over fixed schedules</span>
         </div>
 
         <div className="analytics-card">
           <div className="card-top">
             <span className="card-title">Avg. Response Time</span>
-            <BarChart3 size={20} className="text-warning" />
+            <BarChart3 size={20} className="icon-blue" />
           </div>
           <p className="card-val">1.8 Hours</p>
           <span className="card-sub">Down from 14.5h static schedule delay</span>
@@ -41,16 +41,16 @@ export default function Analytics() {
         <div className="analytics-card">
           <div className="card-top">
             <span className="card-title">CO2 Emissions Saved</span>
-            <Leaf size={20} className="text-primary" />
+            <Leaf size={20} className="icon-teal" />
           </div>
-          <p className="card-val text-primary">184.6 kg</p>
+          <p className="card-val text-teal">184.6 kg</p>
           <span className="card-sub">This week via route optimization</span>
         </div>
 
         <div className="analytics-card">
           <div className="card-top">
             <span className="card-title">Citizen Trust Index</span>
-            <ShieldCheck size={20} className="text-primary" />
+            <ShieldCheck size={20} className="icon-teal" />
           </div>
           <p className="card-val">91 / 100</p>
           <span className="card-sub">Spam reports filtered &lt; 2%</span>
@@ -60,7 +60,7 @@ export default function Analytics() {
       {/* Mandatory Google Tech Stack Checklist Section */}
       <div className="tech-stack-panel">
         <div className="panel-header-row">
-          <Award size={24} className="text-warning" />
+          <Award size={24} className="icon-amber" />
           <div>
             <h3>Google Tech Stack Checklist Verification</h3>
             <p className="text-muted">Judges cross-check this stack against live demo endpoints &amp; video.</p>
@@ -71,7 +71,7 @@ export default function Analytics() {
           {GOOGLE_TECH_STACK.map((tech, idx) => (
             <div key={idx} className="tech-card">
               <div className="tech-card-header">
-                <CheckCircle2 size={20} className="text-primary" />
+                <CheckCircle2 size={20} className="icon-teal" />
                 <h4>{tech.name}</h4>
               </div>
               <span className="tech-layer-tag">{tech.layer}</span>
