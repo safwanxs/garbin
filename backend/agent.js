@@ -167,53 +167,11 @@ function calculateNaiveBaselineDistance(binsToPickup, truckLocation = { lat: 12.
 }
 
 /**
- * Decodes a Google Maps encoded polyline string into an array of [lat, lng] pairs.
+ * 2. REAL ROAD-BASED ROUTING VIA OSRM (Open Source Routing Machine)
+ * Note: The public OSRM demo server (https://router.project-osrm.org) is rate-limited 
+ * and intended for development/testing only — for production, self-host OSRM via Docker or switch to a paid provider.
  */
-function decodePolyline(encoded) {
-  let points = [];
-  let index = 0, len = encoded.length;
-  let lat = 0, lng = 0;
-
-  while (index < len) {
-    let b, shift = 0, result = 0;
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-    let dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
-    lat += dlat;
-
-    shift = 0;
-    result = 0;
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-    let dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
-    lng += dlng;
-
-    points.push([lat / 1e5, lng / 1e5]);
-  }
-  return points;
-}
-
-/**
- * 2. REAL ROAD-BASED ROUTING VIA GOOGLE MAPS DIRECTIONS API
- * Calls Google Maps Directions API using ordered waypoints with optimize:false to preserve priority order.
- */
-async function fetchGoogleMapsDirections(orderedBins, truckLocation = { lat: 12.9600, lng: 77.6300 }) {
-  const mapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
-
-  if (!mapsApiKey || mapsApiKey === 'YOUR_GOOGLE_MAPS_API_KEY' || mapsApiKey.trim() === '') {
-    return {
-      error: true,
-      errorType: 'MISSING_API_KEY',
-      errorMessage: 'GOOGLE_MAPS_API_KEY is not configured in backend/.env'
-    };
-  }
-
+async function fetchOsrmDirections(orderedBins, truckLocation = { lat: 12.9600, lng: 77.6300 }) {
   if (orderedBins.length === 0) {
     return {
       error: true,
@@ -222,42 +180,41 @@ async function fetchGoogleMapsDirections(orderedBins, truckLocation = { lat: 12.
     };
   }
 
-  const origin = `${truckLocation.lat},${truckLocation.lng}`;
-  const destination = `${orderedBins[orderedBins.length - 1].location.lat},${orderedBins[orderedBins.length - 1].location.lng}`;
+  // OSRM expects {longitude},{latitude} format separated by semicolons
+  const coordString = [
+    `${truckLocation.lng},${truckLocation.lat}`,
+    ...orderedBins.map(b => `${b.location.lng},${b.location.lat}`)
+  ].join(';');
 
-  // Build intermediate waypoints string with optimize:false so Google does not re-order priority tiers
-  const intermediateWaypoints = orderedBins.slice(0, orderedBins.length - 1).map(b => `${b.location.lat},${b.location.lng}`);
-  let waypointsParam = '';
-  if (intermediateWaypoints.length > 0) {
-    waypointsParam = `&waypoints=optimize:false|${intermediateWaypoints.join('|')}`;
-  }
-
-  const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${destination}${waypointsParam}&key=${mapsApiKey}`;
+  const url = `https://router.project-osrm.org/route/v1/driving/${coordString}?overview=full&geometries=geojson`;
 
   try {
     const res = await fetch(url);
-    const data = await res.json();
 
-    if (data.status !== 'OK') {
+    if (res.status === 429) {
       return {
         error: true,
-        errorType: data.status,
-        errorMessage: data.error_message || `Google Maps Directions API returned error status: ${data.status}`
+        errorType: 'RATE_LIMITED',
+        errorMessage: 'OSRM public demo server rate limit reached (HTTP 429). Please wait a moment and retry.'
+      };
+    }
+
+    const data = await res.json();
+
+    if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
+      return {
+        error: true,
+        errorType: data.code || 'NO_ROUTE_FOUND',
+        errorMessage: data.message || `OSRM routing failed with status code: ${data.code || 'No route'}`
       };
     }
 
     const route = data.routes[0];
-    let totalMeters = 0;
-    let totalSeconds = 0;
+    const totalDistanceKm = Math.round((route.distance / 1000) * 10) / 10;
+    const estimatedDurationMins = Math.round(route.duration / 60);
 
-    route.legs.forEach(leg => {
-      totalMeters += leg.distance ? leg.distance.value : 0;
-      totalSeconds += leg.duration ? leg.duration.value : 0;
-    });
-
-    const totalDistanceKm = Math.round((totalMeters / 1000) * 10) / 10;
-    const estimatedDurationMins = Math.round(totalSeconds / 60);
-    const polylineCoords = route.overview_polyline ? decodePolyline(route.overview_polyline.points) : [];
+    // OSRM GeoJSON geometry gives [[lon, lat], [lon, lat]...] -> convert to [[lat, lon], [lat, lon]...] for Leaflet
+    const polylineCoords = route.geometry.coordinates.map(([lon, lat]) => [lat, lon]);
 
     return {
       error: false,
@@ -269,13 +226,13 @@ async function fetchGoogleMapsDirections(orderedBins, truckLocation = { lat: 12.
     return {
       error: true,
       errorType: 'NETWORK_ERROR',
-      errorMessage: `Failed to connect to Google Maps Directions API: ${err.message}`
+      errorMessage: `Failed to connect to OSRM routing server: ${err.message}`
     };
   }
 }
 
 /**
- * Main Agent Function: Generates an optimized pickup route.
+ * Main Agent Function: Generates an optimized pickup route using priority ordering & OSRM road routing.
  */
 async function generateOptimizedRoute(binsToPickup, truckLocation = { lat: 12.9600, lng: 77.6300 }) {
   // 1. Build Priority-based Nearest-Neighbor Route Order
@@ -284,23 +241,23 @@ async function generateOptimizedRoute(binsToPickup, truckLocation = { lat: 12.96
   // 2. Compute Naive Unoptimized Baseline Distance
   const naiveBaselineKm = calculateNaiveBaselineDistance(binsToPickup, truckLocation);
 
-  // 3. Call Google Maps Directions API
-  const directionsResult = await fetchGoogleMapsDirections(orderedBins, truckLocation);
+  // 3. Call OSRM Road Routing API
+  const osrmResult = await fetchOsrmDirections(orderedBins, truckLocation);
 
-  // 4. Handle API Failures & Return Explicit Error
-  if (directionsResult.error) {
+  // 4. Handle Routing Failures & Return Explicit Error
+  if (osrmResult.error) {
     return {
       success: false,
       error: true,
-      errorType: directionsResult.errorType,
-      errorMessage: directionsResult.errorMessage,
+      errorType: osrmResult.errorType,
+      errorMessage: osrmResult.errorMessage,
       orderedBins,
       naiveBaselineKm
     };
   }
 
   // 5. Calculate Real Distance Comparison & Truck Assignments
-  const realDistanceKm = directionsResult.totalDistanceKm;
+  const realDistanceKm = osrmResult.totalDistanceKm;
   const distanceSavingsKm = Math.round((naiveBaselineKm - realDistanceKm) * 10) / 10;
   const distanceSavingsPct = naiveBaselineKm > 0 
     ? Math.round(((naiveBaselineKm - realDistanceKm) / naiveBaselineKm) * 100)
@@ -314,18 +271,19 @@ async function generateOptimizedRoute(binsToPickup, truckLocation = { lat: 12.96
   return {
     success: true,
     route: {
-      routeId: `ROUTE-GDIR-${Date.now().toString().slice(-4)}`,
+      routeId: `ROUTE-OSRM-${Date.now().toString().slice(-4)}`,
       stopSequence: orderedBins.map(b => b.id),
       orderedBins,
       totalDistanceKm: realDistanceKm,
-      estimatedDurationMins: directionsResult.estimatedDurationMins,
+      estimatedDurationMins: osrmResult.estimatedDurationMins,
       naiveBaselineKm,
       distanceSavingsKm,
       distanceSavingsPct,
       trucksAssigned,
       co2SavedKg,
-      polylineCoords: directionsResult.polylineCoords,
-      isRealDirections: true
+      polylineCoords: osrmResult.polylineCoords,
+      isRealDirections: true,
+      provider: 'OSRM (Open Source Routing Machine)'
     }
   };
 }

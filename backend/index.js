@@ -238,7 +238,7 @@ app.post('/api/bins/pickup', (req, res) => {
 
 /**
  * POST /api/generate-route
- * Priority nearest-neighbor ordering + Google Maps Directions API routing.
+ * Priority nearest-neighbor ordering + OSRM road routing.
  */
 app.post('/api/generate-route', async (req, res) => {
   try {

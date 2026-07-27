@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Truck, MapPin, Sparkles, CheckCircle2, ShieldAlert, ArrowRight, Gauge, Leaf, Clock, Navigation, AlertTriangle, Key, ExternalLink } from 'lucide-react';
+import { Truck, MapPin, Sparkles, CheckCircle2, ShieldAlert, ArrowRight, Gauge, Leaf, Clock, Navigation, AlertTriangle, Key, Info } from 'lucide-react';
 import MapView from './MapView';
 
 export default function RoutePlanner({ bins = [], route = null, routeError = null, onGenerateRoute, onClearRoute }) {
@@ -19,35 +19,43 @@ export default function RoutePlanner({ bins = [], route = null, routeError = nul
       <div className="planner-header-card">
         <div className="header-left">
           <div className="adk-badge">
-            <Sparkles size={16} /> Priority Nearest-Neighbor + Google Maps Directions API
+            <Sparkles size={16} /> Priority Nearest-Neighbor + OSRM Road Routing
           </div>
           <h2>Sanitation Route Planner</h2>
-          <p className="text-muted">Orders stops by priority tier (critical overflows first, then predictive risk) &amp; computes road routes via Google Maps API.</p>
+          <p className="text-muted">Orders stops by priority tier (critical overflows first, then predictive risk) &amp; computes road routes via OSRM HTTP API.</p>
         </div>
 
         <button className="civic-btn-primary" onClick={handleRunAgent} disabled={loading}>
           <Truck size={20} />
-          {loading ? 'Directions API Optimizing Route...' : 'Generate Today\'s Road Route'}
+          {loading ? 'OSRM Agent Optimizing Route...' : 'Generate Today\'s Road Route'}
         </button>
       </div>
 
-      {/* Error State Banner if Directions API call fails */}
+      {/* Development / OSRM Disclaimer Banner */}
+      <div className="osrm-demo-disclaimer">
+        <Info size={16} className="icon-blue inline-icon" />
+        <span>
+          <strong>OSRM Demo Server Note:</strong> The public OSRM demo server (<code>router.project-osrm.org</code>) is rate-limited and intended for development/testing only — for production, self-host OSRM via Docker or switch to a paid provider.
+        </span>
+      </div>
+
+      {/* Error State Banner if OSRM Routing call fails */}
       {routeError && (
         <div className="api-error-banner">
           <div className="error-banner-header">
             <AlertTriangle size={24} className="icon-red" />
             <div>
-              <h3>Google Maps Directions API Failure ({routeError.errorType})</h3>
+              <h3>OSRM Road Routing Failure ({routeError.errorType})</h3>
               <p className="error-msg-detail">{routeError.errorMessage}</p>
             </div>
           </div>
 
           <div className="error-instructions">
-            <h4><Key size={14} className="inline-icon" /> Setup Instructions Required:</h4>
+            <h4><Info size={14} className="inline-icon" /> Troubleshooting Options:</h4>
             <ol>
-              <li>Add your API key to <code>backend/.env</code>: <code>GOOGLE_MAPS_API_KEY=YOUR_ACTUAL_KEY</code></li>
-              <li>Ensure <strong>Directions API</strong> is enabled in your Google Cloud Console.</li>
-              <li>Confirm billing is active on your Google Cloud Project.</li>
+              <li>If rate-limited (HTTP 429), wait a few seconds and click <strong>"Generate Today's Road Route"</strong> again.</li>
+              <li>Ensure your machine has internet connectivity to reach <code>router.project-osrm.org</code>.</li>
+              <li>For production environments, self-host OSRM via Docker or connect a dedicated routing service.</li>
             </ol>
           </div>
         </div>
@@ -59,7 +67,7 @@ export default function RoutePlanner({ bins = [], route = null, routeError = nul
           <div className="metric-box">
             <div className="metric-icon blue"><Navigation size={22} /></div>
             <div>
-              <span className="metric-label">Real Road Distance</span>
+              <span className="metric-label">OSRM Road Distance</span>
               <h3 className="metric-val">{route.totalDistanceKm} km</h3>
               <span className="metric-sub text-teal">
                 {route.distanceSavingsPct >= 0 ? `${route.distanceSavingsPct}%` : '0%'} vs naive ({route.naiveBaselineKm} km)
@@ -73,7 +81,7 @@ export default function RoutePlanner({ bins = [], route = null, routeError = nul
               <span className="metric-label">Est. Completion Time</span>
               <h3 className="metric-val">{route.estimatedDurationMins} mins</h3>
               <span className="metric-sub text-muted">
-                {route.trucksAssigned} Truck{route.trucksAssigned > 1 ? 's' : ''} assigned (Cap: 4/truck)
+                {route.trucksAssigned} Truck{route.trucksAssigned > 1 ? 's' : ''} assigned (Cap: 4 stops/truck)
               </span>
             </div>
           </div>
@@ -112,7 +120,7 @@ export default function RoutePlanner({ bins = [], route = null, routeError = nul
             <div className="no-route-placeholder">
               <Truck size={48} className="text-muted" />
               <h4>No Active Road Route Generated</h4>
-              <p className="text-muted">Click <strong>"Generate Today's Road Route"</strong> to trigger priority ordering and Google Maps Directions routing.</p>
+              <p className="text-muted">Click <strong>"Generate Today's Road Route"</strong> to trigger priority ordering and OSRM road routing.</p>
               <button className="btn-secondary" onClick={handleRunAgent}>
                 Generate Route Now
               </button>
@@ -150,8 +158,8 @@ export default function RoutePlanner({ bins = [], route = null, routeError = nul
 
         <div className="map-panel">
           <div className="panel-title-bar">
-            <h3>Google Maps Road Route Visualizer</h3>
-            <span className="text-muted">Blue line indicates Google Directions polyline</span>
+            <h3>OSRM Road Route Visualizer</h3>
+            <span className="text-muted">Blue line indicates OSRM GeoJSON road polyline</span>
           </div>
           <MapView bins={bins} route={route} />
         </div>
