@@ -3,9 +3,9 @@ import { BarChart3, TrendingUp, ShieldCheck, Leaf, Award, CheckCircle2, Cpu } fr
 
 const GOOGLE_TECH_STACK = [
   { name: 'Gemini Models', layer: 'Citizen Reporting', detail: 'Gemini 2.5 Multimodal Flash Vision classifying overflow photos & severity in real time.' },
-  { name: 'Vertex AI Heuristics', layer: 'Fill Prediction', detail: 'Predictive risk algorithm evaluating report velocity and pickup gaps to flag pre-overflow risk.' },
-  { name: 'ADK-Pattern Pipeline', layer: 'Orchestration', detail: 'Multi-agent pipeline coordinating Reporting Agent -> Predictive Agent -> Route Planning Agent.' },
-  { name: 'Firebase Schema & Store', layer: 'Data & Backend', detail: 'Real-time database storing bin locations, report logs, truck status, and citizen trust scores.' },
+  { name: 'Custom Predictive Heuristic', layer: 'Fill Prediction', detail: 'Rule-based risk scoring evaluates report velocity and pickup gaps to flag pre-overflow risk. It is not a Vertex AI model.' },
+  { name: 'Routing Service', layer: 'Orchestration', detail: 'Node.js service combines priority ordering with OSRM road routing for sanitation dispatch plans.' },
+  { name: 'Firebase Auth + Firestore', layer: 'Data & Backend', detail: 'Anonymous Firebase Auth authorizes write requests; Firestore persists bins, reports, and generated routes.' },
   { name: 'MCP Tool Interface', layer: 'External Integration', detail: 'Standardized MCP-compatible tool interface connecting Garbin logic with municipal GIS map tools.' },
   { name: 'Cloud Run', layer: 'Hosting', detail: 'Production container hosting serving Express backend & Vite React frontend on a single service.' }
 ];

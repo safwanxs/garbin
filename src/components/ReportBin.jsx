@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Camera, MapPin, UploadCloud, Loader2, CheckCircle2, AlertTriangle, Sparkles, ShieldCheck, Image as ImageIcon } from 'lucide-react';
 import { API_BASE } from '../config';
+import { getFirebaseAuthHeaders } from '../firebase';
 
 const PRESET_SAMPLE_PHOTOS = [
   {
@@ -85,10 +86,12 @@ export default function ReportBin({ onReportSubmitted }) {
     setResult(null);
 
     try {
+      const authHeaders = await getFirebaseAuthHeaders();
       const response = await fetch(`${API_BASE}/report`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...authHeaders
         },
         body: JSON.stringify({
           binId: selectedBinId,

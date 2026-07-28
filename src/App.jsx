@@ -19,6 +19,7 @@ import McpInspector from './components/McpInspector';
 import Analytics from './components/Analytics';
 import SubmissionKit from './components/SubmissionKit';
 import { API_BASE } from './config';
+import { ensureAnonymousAuth, getFirebaseAuthHeaders } from './firebase';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -36,21 +37,17 @@ function App() {
         setBins(data.bins);
       }
     } catch (err) {
-      console.warn("Using offline initial seed data state:", err);
-      setBins([
-        { id: 'bin_indira_101', address: '100ft Road, Indiranagar, Bengaluru', location: { lat: 12.9716, lng: 77.6412 }, capacity: '1100L', lastPickupDate: '2026-07-23T08:30:00Z', status: 'overflowing', predictiveFlag: true, daysSinceLastPickup: 4, reportCountPastWeek: 3, riskScore: 1.0, riskReason: 'ACTIVE OVERFLOW: Resident & Gemini confirmed' },
-        { id: 'bin_kora_204', address: '5th Block, Koramangala (Opp. Forum)', location: { lat: 12.9352, lng: 77.6245 }, capacity: '660L', lastPickupDate: '2026-07-22T10:00:00Z', status: 'flagged', predictiveFlag: true, daysSinceLastPickup: 5, reportCountPastWeek: 2, riskScore: 0.88, riskReason: 'PREDICTIVE ALERT: 2 reports in 7 days & 5 days without pickup' },
-        { id: 'bin_mg_309', address: 'MG Road Metro Station Exit 2', location: { lat: 12.9756, lng: 77.6066 }, capacity: '1100L', lastPickupDate: '2026-07-21T14:15:00Z', status: 'flagged', predictiveFlag: true, daysSinceLastPickup: 6, reportCountPastWeek: 3, riskScore: 0.92, riskReason: 'PREDICTIVE ALERT: High commercial volume & 6 days gap' },
-        { id: 'bin_hsr_412', address: '27th Main Road, HSR Layout', location: { lat: 12.9121, lng: 77.6445 }, capacity: '660L', lastPickupDate: '2026-07-26T16:00:00Z', status: 'normal', predictiveFlag: false, daysSinceLastPickup: 1, reportCountPastWeek: 0, riskScore: 0.2, riskReason: 'Normal fill level' },
-        { id: 'bin_white_505', address: 'ITPL Main Road, Whitefield', location: { lat: 12.9870, lng: 77.7312 }, capacity: '1100L', lastPickupDate: '2026-07-20T09:00:00Z', status: 'overflowing', predictiveFlag: true, daysSinceLastPickup: 7, reportCountPastWeek: 4, riskScore: 1.0, riskReason: 'ACTIVE OVERFLOW: Immediate clearance requested' },
-        { id: 'bin_jaya_618', address: '4th Block Complex, Jayanagar', location: { lat: 12.9298, lng: 77.5826 }, capacity: '660L', lastPickupDate: '2026-07-27T07:00:00Z', status: 'normal', predictiveFlag: false, daysSinceLastPickup: 0, reportCountPastWeek: 0, riskScore: 0.15, riskReason: 'Pickup completed today' }
-      ]);
+      console.error('Could not load Firestore-backed bin data:', err);
+      setBins([]);
     } finally {
       setLoadingBins(false);
     }
   };
 
   useEffect(() => {
+    ensureAnonymousAuth().catch((error) => {
+      console.error('Firebase anonymous sign-in failed:', error);
+    });
     fetchBins();
   }, []);
 
@@ -63,7 +60,11 @@ function App() {
 
   const handleGenerateRoute = async () => {
     try {
-      const res = await fetch(`${API_BASE}/generate-route`, { method: 'POST' });
+      const authHeaders = await getFirebaseAuthHeaders();
+      const res = await fetch(`${API_BASE}/generate-route`, {
+        method: 'POST',
+        headers: authHeaders
+      });
       const contentType = res.headers.get('content-type');
 
       if (!res.ok || !contentType || !contentType.includes('application/json')) {
@@ -107,19 +108,22 @@ function App() {
 
   const handlePickupBin = async (binId) => {
     try {
+      const authHeaders = await getFirebaseAuthHeaders();
       const res = await fetch(`${API_BASE}/bins/pickup`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ binId })
       });
       const data = await res.json();
       if (data.success) {
         showToast(`Pickup logged for ${binId}. Status reset to Normal.`);
         fetchBins();
+      } else {
+        showToast(data.error || 'Unable to log pickup.');
       }
     } catch (err) {
-      setBins(prev => prev.map(b => b.id === binId ? { ...b, status: 'normal', predictiveFlag: false, riskScore: 0.15, riskReason: 'Pickup completed just now' } : b));
-      showToast(`Pickup logged for ${binId}. Status reset to Normal.`);
+      console.error('Pickup failed:', err);
+      showToast('Unable to log pickup. Check your connection and sign-in status.');
     }
   };
 
@@ -215,7 +219,7 @@ function App() {
             <h1>
               {activeTab === 'dashboard' && 'BBMP Municipal Staff Control Center'}
               {activeTab === 'report' && 'Citizen Overflow Reporting'}
-              {activeTab === 'route' && 'ADK Sanitation Route Agent'}
+              {activeTab === 'route' && 'Sanitation Route Agent'}
               {activeTab === 'mcp' && 'MCP Tool Interface'}
               {activeTab === 'analytics' && 'Operational Impact & Tech Stack'}
               {activeTab === 'submission' && 'Submission & Pitch Kit (1 Aug 2026)'}

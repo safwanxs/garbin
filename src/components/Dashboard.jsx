@@ -70,7 +70,7 @@ export default function Dashboard({
             </div>
             {route && (
               <div className="active-route-chip">
-                <Truck size={16} /> ADK Route Active: {route.totalDistanceKm} km
+                <Truck size={16} /> Route Active: {route.totalDistanceKm} km
               </div>
             )}
           </div>
