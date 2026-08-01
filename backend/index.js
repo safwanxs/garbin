@@ -131,6 +131,25 @@ app.post('/api/bins/pickup', requireFirebaseAuth, async (req, res) => {
   }
 });
 
+function sanitizeForFirestore(val) {
+  if (Array.isArray(val)) {
+    return val.map(item => {
+      if (Array.isArray(item) && item.length >= 2) {
+        return { lat: item[0], lng: item[1] };
+      }
+      return sanitizeForFirestore(item);
+    });
+  }
+  if (val !== null && typeof val === 'object' && !(val instanceof Date)) {
+    const clean = {};
+    for (const key of Object.keys(val)) {
+      clean[key] = sanitizeForFirestore(val[key]);
+    }
+    return clean;
+  }
+  return val;
+}
+
 app.post('/api/generate-route', requireFirebaseAuth, async (req, res) => {
   try {
     const { bins } = await getEvaluatedBins();
@@ -161,7 +180,8 @@ app.post('/api/generate-route', requireFirebaseAuth, async (req, res) => {
       createdAt: new Date().toISOString(),
       status: 'assigned'
     };
-    await db.collection('routes').doc(newRoute.routeId).set(newRoute);
+    const firestoreSafeRoute = sanitizeForFirestore(newRoute);
+    await db.collection('routes').doc(newRoute.routeId).set(firestoreSafeRoute);
 
     res.json({ success: true, route: newRoute });
   } catch (error) {

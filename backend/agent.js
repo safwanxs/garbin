@@ -248,8 +248,8 @@ async function fetchOsrmDirections(orderedBins, truckLocation = { lat: 12.9600, 
     const totalDistanceKm = Math.round((route.distance / 1000) * 10) / 10;
     const estimatedDurationMins = Math.round(route.duration / 60);
 
-    // OSRM GeoJSON geometry gives [[lon, lat], [lon, lat]...] -> convert to [[lat, lon], [lat, lon]...] for Leaflet
-    const polylineCoords = route.geometry.coordinates.map(([lon, lat]) => [lat, lon]);
+    // OSRM GeoJSON geometry gives [[lon, lat], [lon, lat]...] -> convert to [{ lat, lng }] objects for Firestore & Leaflet compatibility
+    const polylineCoords = route.geometry.coordinates.map(([lon, lat]) => ({ lat, lng: lon }));
 
     return {
       error: false,
@@ -300,10 +300,10 @@ async function generateOptimizedRoute(binsToPickup, truckLocation = { lat: 12.96
     console.warn(`OSRM routing notice (${osrmResult.errorType}): ${osrmResult.errorMessage}. Using straight-line priority route fallback.`);
     const startLoc = getBinLocation({ location: truckLocation });
     polylineCoords = [
-      [startLoc.lat, startLoc.lng],
+      { lat: startLoc.lat, lng: startLoc.lng },
       ...orderedBins.map(b => {
         const loc = getBinLocation(b);
-        return [loc.lat, loc.lng];
+        return { lat: loc.lat, lng: loc.lng };
       })
     ];
 
