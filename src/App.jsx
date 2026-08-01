@@ -65,38 +65,45 @@ function App() {
         method: 'POST',
         headers: authHeaders
       });
-      const contentType = res.headers.get('content-type');
+      const contentType = res.headers.get('content-type') || '';
 
-      if (!res.ok || !contentType || !contentType.includes('application/json')) {
-        setRoute(null);
-        setRouteError({
-          errorType: 'BACKEND_OFFLINE',
-          errorMessage: 'Backend Express server is offline or unreachable on port 8080. Please run "node backend/index.js" in your terminal.'
-        });
-        setActiveTab('route');
-        showToast("Backend Server Offline: Run 'node backend/index.js'");
-        return;
-      }
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
 
-      const data = await res.json();
-      if (data.success && data.route) {
-        setRoute(data.route);
-        setRouteError(null);
-        setActiveTab('route');
-        showToast("OSRM Road Routing generated priority itinerary!");
-      } else if (data.error || data.errorMessage) {
-        setRoute(null);
-        setRouteError({
-          errorType: data.errorType || 'ROUTING_ERROR',
-          errorMessage: data.errorMessage || 'Failed to calculate route using OSRM.'
-        });
-        setActiveTab('route');
-        showToast(`Route Error: ${data.errorType || 'Routing Error'}`);
+        if (res.ok && data.success && data.route) {
+          setRoute(data.route);
+          setRouteError(null);
+          setActiveTab('route');
+          showToast(
+            data.route.isFallback 
+              ? "Priority route generated (OSRM fallback mode)" 
+              : "OSRM Road Routing generated priority itinerary!"
+          );
+        } else {
+          const errDetail = data.errorMessage || data.error || (typeof data.error === 'string' ? data.error : null) || 'Route generation failed.';
+          const errType = data.errorType || (res.status === 401 ? 'UNAUTHORIZED' : res.status === 400 ? 'BAD_REQUEST' : `HTTP_${res.status}`);
+
+          setRoute(null);
+          setRouteError({
+            errorType: errType,
+            errorMessage: `[HTTP ${res.status}] ${errDetail}`
+          });
+          setActiveTab('route');
+          showToast(`Route Error (${res.status}): ${errDetail}`);
+        }
       } else {
-        showToast("No bins currently require pickup!");
+        const rawText = await res.text();
+        const snippet = rawText.slice(0, 150).replace(/<[^>]*>?/gm, '').trim();
+        setRoute(null);
+        setRouteError({
+          errorType: `HTTP_${res.status}_NON_JSON`,
+          errorMessage: `Server returned non-JSON response (HTTP ${res.status} ${res.statusText})${snippet ? `: ${snippet}` : ''}`
+        });
+        setActiveTab('route');
+        showToast(`Server Error (${res.status}): Non-JSON response received.`);
       }
     } catch (err) {
-      console.error(err);
+      console.error('handleGenerateRoute network error:', err);
       setRoute(null);
       setRouteError({
         errorType: 'NETWORK_ERROR',

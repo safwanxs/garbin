@@ -39,13 +39,23 @@ export default function RoutePlanner({ bins = [], route = null, routeError = nul
         </span>
       </div>
 
+      {/* Fallback Notice Banner if OSRM was unavailable and straight-line fallback was used */}
+      {route && route.isFallback && (
+        <div className="osrm-demo-disclaimer" style={{ borderColor: 'var(--civic-amber)', background: 'rgba(245, 158, 11, 0.08)' }}>
+          <AlertTriangle size={18} className="icon-amber inline-icon" />
+          <span>
+            <strong style={{ color: 'var(--civic-amber)' }}>Fallback Route Mode Active:</strong> {route.fallbackNotice || 'OSRM public server was unavailable. Route generated using straight-line priority nearest-neighbor path.'}
+          </span>
+        </div>
+      )}
+
       {/* Error State Banner if OSRM Routing call fails */}
       {routeError && (
         <div className="api-error-banner">
           <div className="error-banner-header">
             <AlertTriangle size={24} className="icon-red" />
             <div>
-              <h3>OSRM Road Routing Failure ({routeError.errorType})</h3>
+              <h3>Road Routing Failure ({routeError.errorType})</h3>
               <p className="error-msg-detail">{routeError.errorMessage}</p>
             </div>
           </div>
@@ -53,9 +63,9 @@ export default function RoutePlanner({ bins = [], route = null, routeError = nul
           <div className="error-instructions">
             <h4><Info size={14} className="inline-icon" /> Troubleshooting Options:</h4>
             <ol>
+              <li>If authentication failed (HTTP 401), wait a moment for Firebase anonymous auth to initialize.</li>
               <li>If rate-limited (HTTP 429), wait a few seconds and click <strong>"Generate Today's Road Route"</strong> again.</li>
-              <li>Ensure your machine has internet connectivity to reach <code>router.project-osrm.org</code>.</li>
-              <li>For production environments, self-host OSRM via Docker or connect a dedicated routing service.</li>
+              <li>Ensure your machine has internet connectivity.</li>
             </ol>
           </div>
         </div>

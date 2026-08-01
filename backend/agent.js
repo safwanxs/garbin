@@ -77,15 +77,27 @@ async function classifyBinImage(base64Image) {
 }
 
 /**
+ * Helper to safely extract latitude and longitude from a bin object, with defaults for Central Bengaluru.
+ */
+function getBinLocation(bin) {
+  if (bin && bin.location && typeof bin.location.lat === 'number' && typeof bin.location.lng === 'number') {
+    return bin.location;
+  }
+  return { lat: 12.9716, lng: 77.5946 };
+}
+
+/**
  * Calculates Haversine distance in kilometers between two geographic coordinates.
  */
 function haversineDistance(loc1, loc2) {
+  const p1 = getBinLocation({ location: loc1 });
+  const p2 = getBinLocation({ location: loc2 });
   const R = 6371; // Earth's radius in kilometers
-  const dLat = (loc2.lat - loc1.lat) * Math.PI / 180;
-  const dLng = (loc2.lng - loc1.lng) * Math.PI / 180;
+  const dLat = (p2.lat - p1.lat) * Math.PI / 180;
+  const dLng = (p2.lng - p1.lng) * Math.PI / 180;
   const a = 
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(loc1.lat * Math.PI / 180) * Math.cos(loc2.lat * Math.PI / 180) * 
+    Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) * 
     Math.sin(dLng / 2) * Math.sin(dLng / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
@@ -97,10 +109,6 @@ function haversineDistance(loc1, loc2) {
  * Among bins of the same priority tier, orders by greedy nearest-neighbor distance from truck's position.
  */
 function buildRouteOrder(binsToPickup, truckLocation = { lat: 12.9600, lng: 77.6300 }) {
-  // Separate bins into Priority Tiers:
-  // Tier 1: Active Overflow (Red)
-  // Tier 2: Predictive High Risk (Amber)
-  // Tier 3: Normal Bins
   const overflowBins = binsToPickup.filter(b => b.status === 'overflowing');
   const highRiskBins = binsToPickup.filter(b => b.predictiveFlag && b.status !== 'overflowing');
   const normalBins = binsToPickup.filter(b => b.status !== 'overflowing' && !b.predictiveFlag);
@@ -115,7 +123,8 @@ function buildRouteOrder(binsToPickup, truckLocation = { lat: 12.9600, lng: 77.6
       let minDistance = Infinity;
 
       for (let i = 0; i < unvisited.length; i++) {
-        const dist = haversineDistance(curr, unvisited[i].location);
+        const binLoc = getBinLocation(unvisited[i]);
+        const dist = haversineDistance(curr, binLoc);
         if (dist < minDistance) {
           minDistance = dist;
           nearestIdx = i;
@@ -124,7 +133,7 @@ function buildRouteOrder(binsToPickup, truckLocation = { lat: 12.9600, lng: 77.6
 
       const nearestBin = unvisited.splice(nearestIdx, 1)[0];
       ordered.push(nearestBin);
-      curr = nearestBin.location;
+      curr = getBinLocation(nearestBin);
     }
 
     return { ordered, lastPos: curr };
@@ -159,9 +168,9 @@ function buildRouteOrder(binsToPickup, truckLocation = { lat: 12.9600, lng: 77.6
  */
 function calculateNaiveBaselineDistance(binsToPickup, truckLocation = { lat: 12.9600, lng: 77.6300 }) {
   if (binsToPickup.length === 0) return 0;
-  let total = haversineDistance(truckLocation, binsToPickup[0].location);
+  let total = haversineDistance(truckLocation, getBinLocation(binsToPickup[0]));
   for (let i = 0; i < binsToPickup.length - 1; i++) {
-    total += haversineDistance(binsToPickup[i].location, binsToPickup[i + 1].location);
+    total += haversineDistance(getBinLocation(binsToPickup[i]), getBinLocation(binsToPickup[i + 1]));
   }
   return Math.round(total * 10) / 10;
 }
@@ -180,22 +189,48 @@ async function fetchOsrmDirections(orderedBins, truckLocation = { lat: 12.9600, 
     };
   }
 
+  const startLoc = getBinLocation({ location: truckLocation });
+
   // OSRM expects {longitude},{latitude} format separated by semicolons
   const coordString = [
-    `${truckLocation.lng},${truckLocation.lat}`,
-    ...orderedBins.map(b => `${b.location.lng},${b.location.lat}`)
+    `${startLoc.lng},${startLoc.lat}`,
+    ...orderedBins.map(b => {
+      const loc = getBinLocation(b);
+      return `${loc.lng},${loc.lat}`;
+    })
   ].join(';');
 
   const url = `https://router.project-osrm.org/route/v1/driving/${coordString}?overview=full&geometries=geojson`;
 
   try {
-    const res = await fetch(url);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s timeout
+
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
 
     if (res.status === 429) {
       return {
         error: true,
         errorType: 'RATE_LIMITED',
         errorMessage: 'OSRM public demo server rate limit reached (HTTP 429). Please wait a moment and retry.'
+      };
+    }
+
+    if (!res.ok) {
+      return {
+        error: true,
+        errorType: `HTTP_${res.status}`,
+        errorMessage: `OSRM public server returned HTTP status ${res.status}.`
+      };
+    }
+
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      return {
+        error: true,
+        errorType: 'INVALID_RESPONSE',
+        errorMessage: 'OSRM public server returned non-JSON response.'
       };
     }
 
@@ -223,16 +258,20 @@ async function fetchOsrmDirections(orderedBins, truckLocation = { lat: 12.9600, 
       polylineCoords
     };
   } catch (err) {
+    const isAbort = err.name === 'AbortError';
     return {
       error: true,
-      errorType: 'NETWORK_ERROR',
-      errorMessage: `Failed to connect to OSRM routing server: ${err.message}`
+      errorType: isAbort ? 'TIMEOUT' : 'NETWORK_ERROR',
+      errorMessage: isAbort 
+        ? 'OSRM routing request timed out after 6 seconds.' 
+        : `Failed to connect to OSRM routing server: ${err.message}`
     };
   }
 }
 
 /**
  * Main Agent Function: Generates an optimized pickup route using priority ordering & OSRM road routing.
+ * Gracefully falls back to straight-line priority nearest-neighbor path if OSRM is rate-limited or unavailable.
  */
 async function generateOptimizedRoute(binsToPickup, truckLocation = { lat: 12.9600, lng: 77.6300 }) {
   // 1. Build Priority-based Nearest-Neighbor Route Order
@@ -244,20 +283,43 @@ async function generateOptimizedRoute(binsToPickup, truckLocation = { lat: 12.96
   // 3. Call OSRM Road Routing API
   const osrmResult = await fetchOsrmDirections(orderedBins, truckLocation);
 
-  // 4. Handle Routing Failures & Return Explicit Error
-  if (osrmResult.error) {
-    return {
-      success: false,
-      error: true,
-      errorType: osrmResult.errorType,
-      errorMessage: osrmResult.errorMessage,
-      orderedBins,
-      naiveBaselineKm
-    };
+  let realDistanceKm;
+  let estimatedDurationMins;
+  let polylineCoords;
+  let provider;
+  let isFallback = false;
+  let fallbackNotice = null;
+
+  if (!osrmResult.error) {
+    realDistanceKm = osrmResult.totalDistanceKm;
+    estimatedDurationMins = osrmResult.estimatedDurationMins;
+    polylineCoords = osrmResult.polylineCoords;
+    provider = 'OSRM (Open Source Routing Machine)';
+  } else {
+    // Graceful fallback to straight-line segment priority path
+    console.warn(`OSRM routing notice (${osrmResult.errorType}): ${osrmResult.errorMessage}. Using straight-line priority route fallback.`);
+    const startLoc = getBinLocation({ location: truckLocation });
+    polylineCoords = [
+      [startLoc.lat, startLoc.lng],
+      ...orderedBins.map(b => {
+        const loc = getBinLocation(b);
+        return [loc.lat, loc.lng];
+      })
+    ];
+
+    let straightLineDistance = haversineDistance(truckLocation, getBinLocation(orderedBins[0]));
+    for (let i = 0; i < orderedBins.length - 1; i++) {
+      straightLineDistance += haversineDistance(getBinLocation(orderedBins[i]), getBinLocation(orderedBins[i + 1]));
+    }
+
+    realDistanceKm = Math.round(straightLineDistance * 10) / 10;
+    estimatedDurationMins = Math.round(realDistanceKm * 4 + orderedBins.length * 2);
+    provider = 'Priority Nearest-Neighbor (Straight-Line Fallback)';
+    isFallback = true;
+    fallbackNotice = `OSRM public server unavailable (${osrmResult.errorType}). Displaying straight-line priority route.`;
   }
 
-  // 5. Calculate Real Distance Comparison & Truck Assignments
-  const realDistanceKm = osrmResult.totalDistanceKm;
+  // 4. Calculate Real Distance Comparison & Truck Assignments
   const distanceSavingsKm = Math.round((naiveBaselineKm - realDistanceKm) * 10) / 10;
   const distanceSavingsPct = naiveBaselineKm > 0 
     ? Math.round(((naiveBaselineKm - realDistanceKm) / naiveBaselineKm) * 100)
@@ -275,15 +337,17 @@ async function generateOptimizedRoute(binsToPickup, truckLocation = { lat: 12.96
       stopSequence: orderedBins.map(b => b.id),
       orderedBins,
       totalDistanceKm: realDistanceKm,
-      estimatedDurationMins: osrmResult.estimatedDurationMins,
+      estimatedDurationMins,
       naiveBaselineKm,
       distanceSavingsKm,
       distanceSavingsPct,
       trucksAssigned,
       co2SavedKg,
-      polylineCoords: osrmResult.polylineCoords,
-      isRealDirections: true,
-      provider: 'OSRM (Open Source Routing Machine)'
+      polylineCoords,
+      isRealDirections: !isFallback,
+      isFallback,
+      fallbackNotice,
+      provider
     }
   };
 }
