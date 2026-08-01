@@ -8,7 +8,21 @@ const { mcpToolsRegistry, handleMcpToolCall } = require('./mcpServer');
 const { db, requireFirebaseAuth } = require('./firebaseAdmin');
 
 const app = express();
-app.use(cors());
+
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim())
+  : ['https://garbin.onrender.com', 'http://localhost:5173', 'http://localhost:8080'];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(null, true);
+  },
+  credentials: true
+}));
+
 app.use(express.json({ limit: '15mb' }));
 
 const distPath = path.join(__dirname, '..', 'dist');
